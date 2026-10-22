@@ -1,6 +1,6 @@
 {
   "name": "gladys-hdfury",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Gladys Assistant external integration for HDFury HDMI boxes (VRRoom, Vertex2, Diva, Arcana): signals, audio, displays, operation mode, inputs, hotplug and reboot, over their local HTTP interface. Unofficial, not affiliated with HDFury.",
   "type": "module",

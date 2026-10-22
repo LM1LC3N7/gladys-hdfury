@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-22
+
 ### Added
 
 - HDFury HDMI boxes (VRRoom, Vertex2, Diva, Arcana...) over their local HTTP
@@ -55,4 +57,5 @@ the notes of the version's GitHub Release.
 - Zero-width and bidirectional marks are removed from the texts of the box;
   an address read back from `/data` is checked like a typed one.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-hdfury/commits/main
+[Unreleased]: https://github.com/LM1LC3N7/gladys-hdfury/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-hdfury/releases/tag/v0.1.1
