@@ -1,67 +1,114 @@
-# Template de démonstration
+# Boîtiers HDFury pour Gladys
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Suivez vos boîtiers HDMI **HDFury** (VRRoom, Vertex2, Diva, Arcana…) depuis
+Gladys, en local, sans aucun cloud : signaux d'entrée et de sortie
+(résolution, HDR, couleur), formats audio, écrans et barre de son branchés,
+mode de fonctionnement et entrée de chaque sortie, hotplug et redémarrage.
+
+> **Important.** Cette intégration n'a jamais été testée avec un vrai
+> boîtier : elle a été écrite d'après la bibliothèque `hdfury` (celle de Home
+> Assistant) et testée avec un faux boîtier seulement. Vos retours sont les
+> bienvenus. Intégration non officielle, sans lien avec HDFury.
+
+## Installation
+
+1. Branchez le boîtier sur votre réseau (prise LAN) et donnez-lui une
+   **adresse IP fixe** dans votre box (bail DHCP réservé).
+2. Vérifiez que sa page web s'ouvre dans un navigateur à cette adresse
+   (`http://192.168.1.60` par exemple) : l'intégration lit la même interface.
+3. Dans Gladys, installez l'intégration **HDFury**, ouvrez sa configuration et
+   saisissez les adresses IP, séparées par des virgules (port 80 par défaut,
+   un autre sous la forme `192.168.1.60:8080`).
+4. Les boîtiers apparaissent dans l'onglet **Découverte** : créez-les.
+
+Chaque boîtier est identifié par son **numéro de série** (lu sur sa page
+`brdinfo`, comme Home Assistant) : son adresse peut changer, saisissez alors
+la nouvelle. Un boîtier dont le numéro de série est illisible n'est pas
+ajouté (le statut de l'intégration le dit, nouvel essai au plus chaque
+minute). Le nom de l'appareil reprend le nom d'hôte du boîtier
+(`HDFury VRROOM-02`).
 
 ## Ce que vous obtenez
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+| Fonction                           | Type Gladys                  | Remarque                                                          |
+| ---------------------------------- | ---------------------------- | ----------------------------------------------------------------- |
+| En ligne                           | état binaire (lecture seule) | 1 quand le boîtier a répondu à la dernière lecture                |
+| Mode de fonctionnement             | liste                        | Mode 0 à 5 (splitter, matrice…), VRRoom                           |
+| Entrée de TX0, entrée de TX1       | liste                        | Input 0 à 3, ou copie de l'autre sortie                           |
+| Hotplug                            | bouton                       | relance la négociation HDMI des sources et des écrans             |
+| Reboot                             | bouton                       | refusé tant que l'option « Autoriser le redémarrage » est éteinte |
+| Signal des entrées RX0, RX1        | texte (lecture seule)        | par exemple `4K59.937 593MHz 422 BT2020 12b 2.2`                  |
+| Signal des sorties TX0, TX1        | texte (lecture seule)        | résolution, fréquence, couleur, profondeur, HDR                   |
+| Audio TX0, TX1, sortie audio, eARC | texte (lecture seule)        | par exemple `bitstream 48kHz`                                     |
+| Écrans TX0, TX1, appareil audio    | texte (lecture seule)        | ce que l'écran ou la barre de son annonce (EDID)                  |
+| Formats audio TX0, TX1, sortie     | texte (lecture seule)        | les formats audio annoncés                                        |
 
-## Configuration
+Les textes sont ceux du boîtier, en anglais. Un boîtier n'offre que les
+fonctions que sa page d'informations contient (un Diva ou un Arcana en a
+moins qu'un VRRoom) ; une fonction apparue n'est jamais retirée ensuite.
+Aucun **interrupteur** : un « éteins tout » d'un assistant vocal ou d'une
+scène ne redémarre jamais un boîtier.
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+## Commandes
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+Avant chaque commande, la page `brdinfo` du boîtier est relue : son numéro de
+série doit être celui de l'appareil. Un autre boîtier à cette adresse : rien
+n'est envoyé, et l'adresse est oubliée. Un numéro de série illisible : rien
+n'est envoyé (l'identité n'est pas vérifiée), mais l'adresse est gardée.
 
-## Actions
+- **Entrée de TX0 / TX1** : les entrées sont relues juste avant ; le boîtier
+  reçoit les deux sorties ensemble (`insel`), l'autre sortie étant renvoyée
+  telle quelle. Déjà sélectionnée : rien n'est envoyé.
+- **Mode de fonctionnement** et **Hotplug** : envoyés après la relecture de
+  l'identité.
+- **Reboot** : **désactivé par défaut**. Il faut cocher « Autoriser le
+  redémarrage des boîtiers depuis Gladys » ; l'option est revérifiée juste
+  avant l'envoi (la décocher pendant qu'une commande attend l'annule). Au
+  plus un redémarrage par boîtier toutes les 2 minutes (gardé dans le dossier
+  de données, même après un redémarrage de l'intégration). Un redémarrage
+  coupe l'image et le son un moment.
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+Chaque commande reçoit une réponse en moins de 4 secondes (Gladys attend 5
+secondes). Une commande partie sans réponse du boîtier à temps est signalée
+« envoyée, sans confirmation » ; une commande qui n'a pas pu partir est
+signalée « rien envoyé ». Le boîtier est relu 2,5 secondes après chaque
+commande (la bibliothèque de référence attend 2 secondes après une commande
+avant de relire), 45 secondes après un redémarrage.
 
-## Scènes
+## Bouton de la configuration
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+- **Vérifier les boîtiers** : donne l'état de chaque boîtier. Un boîtier lu
+  depuis moins d'un intervalle n'est pas relu : la réponse donne la dernière
+  lecture et son âge.
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+## Rafraîchissement, statut et limites
 
-## Tableau de bord
+- Chaque boîtier est lu toutes les 30 secondes par défaut (15 à 600), en deux
+  requêtes (`brdinfo`, puis la page d'informations), jamais plus vite : ni la
+  reconnexion à Gladys, ni l'enregistrement d'une configuration inchangée, ni
+  le bouton, ni un redémarrage de l'intégration (l'heure de la dernière
+  tentative est gardée dans le dossier de données) ne relisent plus tôt.
+- Un boîtier qui ne répond pas passe « En ligne » à 0, garde ses derniers
+  textes, et est cité dans le statut de l'intégration.
+- Une réponse plus grande que 32 Ko, ou qui n'est pas un objet JSON, compte
+  comme « ne répond pas ». Les textes sont nettoyés (caractères de contrôle
+  retirés, 200 caractères au plus).
+- Les états envoyés à Gladys restent sous 240 par minute pour toute
+  l'intégration (Gladys en accepte 300) ; ce qui ne tient pas part à la
+  lecture suivante.
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+## Données et confidentialité
 
-## Dépannage
+L'interface du boîtier n'a pas de mot de passe : l'intégration n'en demande
+aucun. Elle garde dans `/data/hdfury.json` les boîtiers connus (numéro de
+série, adresse, port, nom d'hôte, modèle, micrologiciel, fonctions
+offertes, heure du dernier redémarrage envoyé) et l'heure de la dernière
+lecture. Rien ne sort de votre réseau local.
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+## Limites connues
+
+- Pas encore les réglages de la page de configuration du boîtier (bascule
+  automatique des entrées, mode HTPC, CEC, OLED, relais, coupure audio…).
+- Le relais du boîtier n'est volontairement pas proposé (il peut commander un
+  appareil branché dessus).
+- Jamais testé avec un vrai boîtier : les réponses réelles peuvent différer.
