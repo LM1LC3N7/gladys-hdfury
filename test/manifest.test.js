@@ -140,11 +140,32 @@ test('the image ships the license and the third-party notices', () => {
   assert.match(notices, /Permission is hereby granted, free of charge/);
 });
 
-test('no source file holds a raw line separator, zero-width or bidirectional mark', () => {
+/** The files checked for control characters and invisible marks. */
+const CHECKED_FILES = [
+  'gladys-assistant-integration.json',
+  'index.js',
+  'src/app.js',
+  'src/config.js',
+  'src/constants.js',
+  'src/handlers.js',
+  'src/i18n.js',
+  'src/model.js',
+  'src/store.js',
+  'src/hdfury/client.js',
+  'src/hdfury/protocol.js',
+  'docs/en.md',
+  'docs/fr.md',
+  'README.md',
+  'CHANGELOG.md',
+  'TODO.md',
+  'CLAUDE.md',
+];
+
+test('no file holds a raw line separator, zero-width or bidirectional mark', () => {
   const codes = [0x2028, 0x2029, 0xfeff, 0x200b, 0x200c, 0x200d, 0x200e, 0x200f];
   for (let c = 0x202a; c <= 0x202e; c += 1) codes.push(c);
   for (let c = 0x2060; c <= 0x2069; c += 1) codes.push(c);
-  for (const file of ['src/app.js', 'src/hdfury/protocol.js', 'src/i18n.js', 'src/store.js']) {
+  for (const file of CHECKED_FILES) {
     const text = read(file);
     for (const code of codes) {
       assert.ok(!text.includes(String.fromCharCode(code)), `${file}: U+${code.toString(16)}`);
@@ -153,25 +174,7 @@ test('no source file holds a raw line separator, zero-width or bidirectional mar
 });
 
 test('no file holds a control character (tabs and newlines aside)', () => {
-  for (const file of [
-    'gladys-assistant-integration.json',
-    'index.js',
-    'src/app.js',
-    'src/config.js',
-    'src/constants.js',
-    'src/handlers.js',
-    'src/i18n.js',
-    'src/model.js',
-    'src/store.js',
-    'src/hdfury/client.js',
-    'src/hdfury/protocol.js',
-    'docs/en.md',
-    'docs/fr.md',
-    'README.md',
-    'CHANGELOG.md',
-    'TODO.md',
-    'CLAUDE.md',
-  ]) {
+  for (const file of CHECKED_FILES) {
     // eslint-disable-next-line no-control-regex
     assert.doesNotMatch(read(file), /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/, file);
   }

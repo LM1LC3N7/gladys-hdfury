@@ -544,6 +544,36 @@ test('M1: the reboot guard is in /data before the box receives the reboot', asyn
   assert.ok(seen > 0, 'rebootAt written before the request');
 });
 
+test('N1: the option unticked while the reboot guard is written: nothing sent, guard undone', async (t) => {
+  const store = new MemoryStore();
+  const save = store.save.bind(store);
+  let slow = false;
+  store.save = async (data) => {
+    if (slow) {
+      await settle(300);
+    }
+    await save(data);
+  };
+  const { gladys, fake, app } = await setup(t, {
+    store,
+    timings: { commandBudget: 1_500, preRead: 600 },
+  });
+  await gladys.fake.configUpdated({ ...gladys.fake.config, allow_reboot: true });
+  const device = await createDevice(gladys);
+  slow = true;
+  const pending = press(gladys, device, 'reboot');
+  await waitFor(() => fake.reads(BOARD) >= 2, 'the identity read before the reboot');
+  await settle(60);
+  await gladys.fake.configUpdated({ ...gladys.fake.config, allow_reboot: false });
+  const ack = await pending;
+  assert.equal(ack.success, false);
+  assert.match(ack.error, /Reboot is disabled.*nothing sent/);
+  assert.deepEqual(fake.commands, []);
+  assert.equal(app.data.boxes[SERIAL].rebootAt, 0, 'guard undone');
+  slow = false;
+  await waitFor(() => store.data.boxes?.[SERIAL]?.rebootAt === 0, 'the guard undone in /data');
+});
+
 test('M2: a silent box holds its queue for requestTimeout at most', async (t) => {
   const { gladys, fake, app, clock } = await setup(t);
   await createDevice(gladys);

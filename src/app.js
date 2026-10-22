@@ -769,9 +769,13 @@ export class HdfuryApp {
   // --- Commands --------------------------------------------------------------------
 
   /** Refusals of a reboot, checked when asked and again just before sending. */
+  rebootDisabledMessage() {
+    return `Reboot is disabled in the configuration (option "Allow rebooting the boxes"), ${NOTHING_SENT}`;
+  }
+
   rebootRefusal(box) {
     if (!this.config.allowReboot) {
-      return `Reboot is disabled in the configuration (option "Allow rebooting the boxes"), ${NOTHING_SENT}`;
+      return this.rebootDisabledMessage();
     }
     if (box.rebootAt > 0 && this.now() - box.rebootAt < this.timings.rebootSpacing) {
       return `A reboot was sent to this box less than 2 minutes ago, ${NOTHING_SENT}`;
@@ -946,17 +950,31 @@ export class HdfuryApp {
     if (deadline - this.now() < 300) {
       throw new HdfuryError(ERROR_KINDS.BUDGET, `No time left for this command, ${NOTHING_SENT}`);
     }
+    let previousRebootAt;
+    const dropGuard = () => {
+      if (key === FEATURES.REBOOT) {
+        box.rebootAt = previousRebootAt;
+        this.persist();
+      }
+    };
     if (key === FEATURES.REBOOT) {
       // The guard is set and WRITTEN to /data before the first byte.
-      await this.saveRebootGuard(box, deadline);
-      this.checkCommandFresh(epoch, box, address);
+      previousRebootAt = await this.saveRebootGuard(box, deadline);
+      // The option may have been unticked while /data was written.
+      if (!this.config.allowReboot) {
+        dropGuard();
+        throw new Error(this.rebootDisabledMessage());
+      }
+      try {
+        this.checkCommandFresh(epoch, box, address);
+      } catch (err) {
+        dropGuard();
+        throw err;
+      }
     }
     const left = deadline - this.now();
     if (left < 300) {
-      if (key === FEATURES.REBOOT) {
-        box.rebootAt = 0;
-        this.persist();
-      }
+      dropGuard();
       throw new HdfuryError(ERROR_KINDS.BUDGET, `No time left for this command, ${NOTHING_SENT}`);
     }
     context.mayHaveSent = true;
@@ -1044,6 +1062,7 @@ export class HdfuryApp {
     } finally {
       clearTimeout(timer);
     }
+    return previous;
   }
 
   checkCommandFresh(epoch, box, address) {
