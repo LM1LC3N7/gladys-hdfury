@@ -54,26 +54,38 @@ scène ne redémarre jamais un boîtier.
 Avant chaque commande, la page `brdinfo` du boîtier est relue : son numéro de
 série doit être celui de l'appareil. Un autre boîtier à cette adresse : rien
 n'est envoyé, et l'adresse est oubliée. Un numéro de série illisible : rien
-n'est envoyé (l'identité n'est pas vérifiée), mais l'adresse est gardée.
+n'est envoyé (l'identité n'est pas vérifiée), mais l'adresse est gardée ; à
+une lecture de fond, seul « En ligne » est alors publié (les textes lus ne
+sont pas attribués au boîtier) et le statut le signale. Le même boîtier
+saisi sous deux adresses reste à la première, et le statut le signale.
 
 - **Entrée de TX0 / TX1** : les entrées sont relues juste avant ; le boîtier
   reçoit les deux sorties ensemble (`insel`), l'autre sortie étant renvoyée
-  telle quelle. Déjà sélectionnée : rien n'est envoyé.
-- **Mode de fonctionnement** et **Hotplug** : envoyés après la relecture de
-  l'identité.
+  telle quelle (seulement si c'est une valeur connue ; deux sorties qui se
+  copient l'une l'autre sont refusées). Déjà sélectionnée : rien n'est envoyé.
+- **Mode de fonctionnement** : envoyé après la relecture de l'identité.
+- Pour l'entrée et le mode, la page d'informations est **relue dans la même
+  commande** (2 secondes après l'envoi si le temps le permet, sinon le plus
+  tard possible) : la commande n'est un succès que si la valeur relue est
+  celle demandée ; sinon, ou si la relecture n'a pas le temps de se faire,
+  elle est signalée « envoyée, sans confirmation ».
+- **Hotplug** : envoyé après la relecture de l'identité ; il n'y a rien à
+  relire : le succès est l'accusé du boîtier (réponse HTTP 200).
 - **Reboot** : **désactivé par défaut**. Il faut cocher « Autoriser le
   redémarrage des boîtiers depuis Gladys » ; l'option est revérifiée juste
   avant l'envoi (la décocher pendant qu'une commande attend l'annule). Au
-  plus un redémarrage par boîtier toutes les 2 minutes (gardé dans le dossier
-  de données, même après un redémarrage de l'intégration). Un redémarrage
-  coupe l'image et le son un moment.
+  plus un redémarrage par boîtier toutes les 2 minutes : l'heure est écrite
+  dans le dossier de données avant l'envoi (si l'écriture échoue, rien n'est
+  envoyé), et tient après un redémarrage de l'intégration. Le succès est
+  l'accusé du boîtier (réponse HTTP 200). Un redémarrage coupe l'image et le
+  son un moment.
 
 Chaque commande reçoit une réponse en moins de 4 secondes (Gladys attend 5
 secondes). Une commande partie sans réponse du boîtier à temps est signalée
 « envoyée, sans confirmation » ; une commande qui n'a pas pu partir est
-signalée « rien envoyé ». Le boîtier est relu 2,5 secondes après chaque
-commande (la bibliothèque de référence attend 2 secondes après une commande
-avant de relire), 45 secondes après un redémarrage.
+signalée « rien envoyé ». Le boîtier est encore relu 2,5 secondes après
+chaque commande (la bibliothèque de référence attend 2 secondes après une
+commande avant de relire), 45 secondes après un redémarrage.
 
 ## Bouton de la configuration
 

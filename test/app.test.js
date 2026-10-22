@@ -66,12 +66,21 @@ function makeClock() {
 
 async function setup(
   t,
-  { fakeOptions, config, timings = {}, store = new MemoryStore(), clock = makeClock(), box } = {},
+  {
+    fakeOptions,
+    config,
+    timings = {},
+    store = new MemoryStore(),
+    clock = makeClock(),
+    box,
+    devices,
+  } = {},
 ) {
   const fake = box ?? (await startFakeBox(fakeOptions));
   t.after(() => fake.close());
   const gladys = createFakeGladys({
     selector: SELECTOR,
+    ...(devices ? { devices } : {}),
     config: config ?? { addresses: `127.0.0.1:${fake.port}` },
   });
   const logs = [];
@@ -330,15 +339,26 @@ test('another box at the address: nothing sent, address forgotten', async (t) =>
   assert.match(again.error, /address unknown.*nothing sent/);
 });
 
-test('an unreadable serial is no other box: still read, but commands refused', async (t) => {
+test('an unreadable serial is no other box: address kept, only Online, no feature added, commands refused (M5)', async (t) => {
   const { gladys, fake, app, clock } = await setup(t);
   const device = await createDevice(gladys);
   fake.board.serial = '';
   fake.info.TX0 = '1080p60';
+  fake.info.RX2 = 'new key';
+  const caps = [...app.data.boxes[SERIAL].caps];
+  clock.advance(INTERVAL);
+  await app.round();
+  assert.equal(gladys.fake.lastState(id('tx0')), '4K59.937 593MHz 422 BT2020 12b 2.2');
+  assert.equal(gladys.fake.lastState(id('online')), 1);
+  assert.deepEqual(app.data.boxes[SERIAL].caps, caps);
+  assert.ok(app.data.boxes[SERIAL].host, 'address kept');
+  assert.match(gladys.fake.connectionStatus.message.en, /identity not confirmed/);
+  fake.board.serial = SERIAL;
   clock.advance(INTERVAL);
   await app.round();
   assert.equal(gladys.fake.lastState(id('tx0')), '1080p60');
-  assert.equal(gladys.fake.lastState(id('online')), 1);
+  assert.equal(gladys.fake.connectionStatus.message, undefined);
+  fake.board.serial = '';
   const ack = await press(gladys, device, 'hotplug');
   assert.match(ack.error, /serial number unreadable, identity not checked, nothing sent/);
   assert.deepEqual(fake.commands, []);
@@ -456,4 +476,131 @@ test('a reconnection publishes devices, states and status again without reading'
   assert.ok(gladys.fake.states.length > states, 'states again');
   assert.ok(gladys.fake.connectionStatuses.length > statuses, 'status again');
   assert.equal(fake.received.length, reads);
+});
+
+// --- Review 1 ------------------------------------------------------------------
+
+test('I1: /data reset with the device already in Gladys: read and published again', async (t) => {
+  const first = await setup(t);
+  const device = await createDevice(first.gladys);
+  await first.app.stop();
+  const clock = makeClock();
+  const second = await setup(t, {
+    box: first.fake,
+    clock,
+    store: new MemoryStore(),
+    config: first.gladys.fake.config,
+    devices: [device],
+  });
+  await waitFor(() => second.gladys.fake.lastState(id('online')) === 1, 'online from the probe');
+  const reads = first.fake.reads(BOARD);
+  first.fake.info.TX0 = '1080p50';
+  clock.advance(INTERVAL);
+  await second.app.round();
+  assert.equal(first.fake.reads(BOARD), reads + 1, 'read at the first round due');
+  assert.equal(second.gladys.fake.lastState(id('tx0')), '1080p50');
+});
+
+test('I2: a dropdown command ignored by the box (HTTP 200) is "sent, without confirmation"', async (t) => {
+  const { gladys, fake } = await setup(t);
+  const device = await createDevice(gladys);
+  fake.ignoreCommands = true;
+  const input = await press(gladys, device, 'input_tx0', 'input2');
+  assert.equal(input.success, false);
+  assert.match(input.error, /Sent, without confirmation/);
+  const mode = await press(gladys, device, 'operation_mode', 'mode2');
+  assert.match(mode.error, /Sent, without confirmation/);
+  assert.deepEqual(fake.commands, ['insel=2%204', 'opmode=2']);
+  // Read back within the same command, after the debounce.
+  const cmd = fake.received.find((r) => r.path === '/cmd');
+  assert.ok(fake.received.some((r) => r.path === INFO && r.at - cmd.at >= FAST.debounce - 5));
+  // Hotplug has nothing to read back: the box's HTTP 200 is its ack.
+  assert.equal((await press(gladys, device, 'hotplug')).success, true);
+});
+
+test('I2: too little time left to read back: "sent, without confirmation", never "nothing sent"', async (t) => {
+  const { gladys, fake } = await setup(t);
+  const device = await createDevice(gladys);
+  fake.delay['/cmd'] = 780;
+  const ack = await press(gladys, device, 'input_tx0', 'input1');
+  assert.equal(ack.success, false);
+  assert.match(ack.error, /Sent, without confirmation/);
+  assert.doesNotMatch(ack.error, /nothing sent/);
+  assert.deepEqual(fake.commands, ['insel=1%204']);
+});
+
+test('M1: the reboot guard is in /data before the box receives the reboot', async (t) => {
+  const { gladys, fake, store } = await setup(t, {
+    config: { addresses: '', allow_reboot: true },
+  });
+  await gladys.fake.configUpdated({ addresses: `127.0.0.1:${fake.port}`, allow_reboot: true });
+  const device = await createDevice(gladys);
+  let seen;
+  fake.onCommand = () => {
+    seen = store.data.boxes?.[SERIAL]?.rebootAt;
+  };
+  const ack = await press(gladys, device, 'reboot');
+  assert.equal(ack.success, true, ack.error);
+  assert.ok(seen > 0, 'rebootAt written before the request');
+});
+
+test('M2: a silent box holds its queue for requestTimeout at most', async (t) => {
+  const { gladys, fake, app, clock } = await setup(t);
+  await createDevice(gladys);
+  fake.delay[BOARD] = 1_400;
+  clock.advance(INTERVAL);
+  const started = Date.now();
+  await app.round();
+  assert.ok(Date.now() - started < 1_000, `${Date.now() - started} ms`);
+  assert.equal(gladys.fake.lastState(id('online')), 0);
+});
+
+test('M3: never both outputs copying each other, nor an unknown code sent back', async (t) => {
+  const { gladys, fake } = await setup(t);
+  const device = await createDevice(gladys);
+  const copy = await press(gladys, device, 'input_tx0', 'copy_tx1');
+  assert.match(copy.error, /copy the other one, nothing sent/);
+  fake.info.portseltx1 = '9';
+  const unknown = await press(gladys, device, 'input_tx0', 'input2');
+  assert.match(unknown.error, /other output is unknown, nothing sent/);
+  assert.deepEqual(fake.commands, []);
+});
+
+test('M4: the same box behind two typed addresses stays at the first, said in the status', async (t) => {
+  const twin = await startFakeBox();
+  t.after(() => twin.close());
+  const box = await startFakeBox();
+  const { gladys, app, clock } = await setup(t, {
+    box,
+    config: { addresses: `127.0.0.1:${box.port}, 127.0.0.1:${twin.port}` },
+  });
+  const device = await discovered(gladys);
+  const host = app.keyOf(app.data.boxes[SERIAL]);
+  for (let i = 0; i < 3; i += 1) {
+    clock.advance(61_000);
+    await app.round();
+    assert.equal(app.keyOf(app.data.boxes[SERIAL]), host);
+  }
+  assert.deepEqual(
+    gladys.fake.discoveredDevices.find((d) => d.external_id === device.external_id).params,
+    device.params,
+  );
+  assert.match(gladys.fake.connectionStatus.message.en, /same box answers at two typed addresses/);
+});
+
+test('M6: writes to /data never overlap', async (t) => {
+  let running = 0;
+  let most = 0;
+  const store = new MemoryStore();
+  const save = store.save.bind(store);
+  store.save = async (data) => {
+    running += 1;
+    most = Math.max(most, running);
+    await settle(20);
+    await save(data);
+    running -= 1;
+  };
+  const { app } = await setup(t, { store });
+  await Promise.all([app.saveNow(), app.saveNow(), app.markAttempt(), app.saveNow()]);
+  assert.equal(most, 1);
 });

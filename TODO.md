@@ -97,13 +97,40 @@ up to date at the end of every milestone.
   epoch (configuration) and the deadline checked again just before the
   request (300 ms at least left). A command still queued at its deadline is
   dropped, never sent late.
-- Ack: an HTTP 200 to the command is the box's acknowledgement and answers
-  success; the box is read again 2.5 s later (after the reference library's
-  2 s wait), and that read publishes the real value. The value is not read
-  back before answering Gladys: the 2 s wait after a command does not fit in
-  the 5 s ack. A request whose connection opened and that got no answer in
-  time is "sent, without confirmation"; a refused connection is "nothing
-  sent"; another HTTP status is "the box answered HTTP <status>".
+- Ack (review 1, I2): an input or mode change is a success only when the
+  info page, read again in the same queue task, gives the code asked. That
+  read starts 2 s after the command (the reference library's wait) when it
+  fits, else at the deadline - 400 ms at the latest, its request bounded by
+  the deadline - 100 ms; a different value, a failed read or no time left
+  is "Sent, without confirmation from the box" (never "nothing sent"). On a
+  LAN, the reads before take tens of ms, so the read back at ~2.3 s fits in
+  the 3.5 s budget. Hotplug and reboot have nothing to read back: the
+  box's HTTP 200 is their acknowledgement (said in the docs). The box is
+  still read again 2.5 s later, and that read publishes what it really has.
+  A request whose connection opened and that got no answer in time is
+  "sent, without confirmation"; a refused connection is "nothing sent";
+  another HTTP status is "the box answered HTTP <status>".
+- (Review 1) Other fixes:
+  - I1: a box added by `remember()` (empty or reset `/data`) is created at
+    once when `gladys.devices` holds its device, and `createdStale` asks the
+    Gladys list again at the next round: an existing device is read again.
+  - M1: the reboot guard is written to `/data` (awaited, within the budget)
+    before the request; if that write fails, nothing is sent.
+  - M2: each background request gets `requestTimeout` (4 s) at most: a box
+    that accepts the connection and stays silent never holds its queue for
+    the whole `pollBudget`.
+  - M3: `insel` is refused ("nothing sent") when both outputs would copy
+    each other (`4 4`) or when the other output's code is not in the table.
+  - M4: the same serial found at a second typed address while it still
+    answers at the first stays at the first (no move back and forth); the
+    status says "the same box answers at two typed addresses".
+  - M5: a background read with an unreadable serial publishes only
+    `online` 1, never merges features from that page, and the status says
+    "identity not confirmed" until a readable serial comes back.
+  - M6: all writes of `/data` go through one promise chain (`saveNow`).
+  - M7: zero-width and bidirectional marks are removed from the texts.
+  - M8: a `host` read back from `/data` must pass `parseAddress` unchanged,
+    else it is cleared (the box is found again by its typed address).
 - Polling: `poll_interval` 15..600 s (30 by default; Home Assistant reads
   every 60 s). A box is read when an interval has passed since its last
   attempt; after a restart, since the last attempt of the previous run

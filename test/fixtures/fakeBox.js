@@ -62,6 +62,7 @@ export async function startFakeBox(options = {}) {
     if (path === '/cmd') {
       // Recorded when received, even when the answer comes late.
       box.commands.push(url.search.slice(1));
+      box.onCommand?.(url.search.slice(1));
     }
     const answer = () => {
       if (box.status[path] !== undefined) {
@@ -89,7 +90,9 @@ export async function startFakeBox(options = {}) {
         const query = url.search.slice(1);
         const [name, value = ''] = query.split('=');
         const decoded = decodeURIComponent(value);
-        if (name === 'insel') {
+        if (box.ignoreCommands) {
+          // Answers OK, applies nothing.
+        } else if (name === 'insel') {
           const [tx0, tx1] = decoded.split(' ');
           box.info.portseltx0 = tx0;
           box.info.portseltx1 = tx1;

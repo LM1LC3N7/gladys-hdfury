@@ -53,17 +53,30 @@ voice assistant or a scene never reboots a box.
 Before each command, the `brdinfo` page of the box is read again: its serial
 number must be the device's. Another box at that address: nothing is sent,
 and the address is forgotten. An unreadable serial number: nothing is sent
-(identity not checked), but the address is kept.
+(identity not checked), but the address is kept; at a background read, only
+"Online" is then published (the texts read are not credited to the box) and
+the status says so. The same box typed under two addresses stays at the
+first one, and the status says so.
 
 - **Input of TX0 / TX1**: the inputs are read again just before; the box
   receives both outputs together (`insel`), the other output sent back as it
-  is. Already selected: nothing is sent.
-- **Operation mode** and **Hotplug**: sent after the identity is read again.
+  is (only when it is a known value; two outputs copying each other are
+  refused). Already selected: nothing is sent.
+- **Operation mode**: sent after the identity is read again.
+- For the input and the mode, the info page is **read again within the same
+  command** (2 seconds after sending when time allows, else as late as
+  possible): the command is a success only when the value read is the one
+  asked; otherwise, or when there is no time left to read it, it is reported
+  "sent, without confirmation".
+- **Hotplug**: sent after the identity is read again; there is nothing to
+  read back: success is the box's acknowledgement (HTTP 200 answer).
 - **Reboot**: **off by default**. Tick "Allow rebooting the boxes from
   Gladys"; the option is checked again just before sending (unticking it
   while a command waits cancels it). At most one reboot per box every 2
-  minutes (kept in the data folder, even across a restart of the
-  integration). A reboot cuts the picture and the sound for a while.
+  minutes: its time is written to the data folder before sending (if the
+  write fails, nothing is sent), and holds across a restart of the
+  integration. Success is the box's acknowledgement (HTTP 200 answer). A
+  reboot cuts the picture and the sound for a while.
 
 Every command is answered within 4 seconds (Gladys waits 5 seconds). A
 command that left without an answer from the box in time is reported "sent,

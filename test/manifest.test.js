@@ -140,6 +140,18 @@ test('the image ships the license and the third-party notices', () => {
   assert.match(notices, /Permission is hereby granted, free of charge/);
 });
 
+test('no source file holds a raw line separator, zero-width or bidirectional mark', () => {
+  const codes = [0x2028, 0x2029, 0xfeff, 0x200b, 0x200c, 0x200d, 0x200e, 0x200f];
+  for (let c = 0x202a; c <= 0x202e; c += 1) codes.push(c);
+  for (let c = 0x2060; c <= 0x2069; c += 1) codes.push(c);
+  for (const file of ['src/app.js', 'src/hdfury/protocol.js', 'src/i18n.js', 'src/store.js']) {
+    const text = read(file);
+    for (const code of codes) {
+      assert.ok(!text.includes(String.fromCharCode(code)), `${file}: U+${code.toString(16)}`);
+    }
+  }
+});
+
 test('no file holds a control character (tabs and newlines aside)', () => {
   for (const file of [
     'gladys-assistant-integration.json',

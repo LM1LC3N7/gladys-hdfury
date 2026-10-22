@@ -22,6 +22,7 @@ import {
   PATHS,
   codeOf,
   commandPath,
+  optionOf,
   parseBoard,
   parseInfo,
 } from './hdfury/protocol.js';
@@ -38,6 +39,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(0, m
 const PRIORITY = Object.freeze({ COMMAND: 0, BACKGROUND: 1 });
 
 const SELECT_FEATURES = new Set(Object.values(INFO_SELECTS));
+
+/** The input code of "copy the other output". */
+const COPY_CODE = '4';
 
 /** An error of a command, in words that say whether it may have reached the box. */
 function commandError(err) {
@@ -95,6 +99,12 @@ export class HdfuryApp {
     this.stateWindow = [];
     this.attemptSavedAt = -Infinity;
     this.restoredAttempt = 0;
+    /** The writes of /data, one after the other. */
+    this.saveChain = Promise.resolve();
+    /** addressKey -> serial of a known box answering there too (the same box at two addresses) */
+    this.duplicates = new Map();
+    /** serials whose last read gave no readable serial number */
+    this.unconfirmed = new Set();
     this.loading = undefined;
     this.rounding = undefined;
     this.pollTimer = undefined;
@@ -204,9 +214,9 @@ export class HdfuryApp {
     if (this.persistTimer) {
       this.timers.clearTimeout(this.persistTimer);
       this.persistTimer = undefined;
-      return this.store.save(this.data).catch(() => {});
+      return this.saveNow().catch(() => {});
     }
-    return Promise.resolve();
+    return this.saveChain;
   }
 
   tick() {
@@ -257,10 +267,22 @@ export class HdfuryApp {
     }
     this.persistTimer = this.timers.setTimeout(() => {
       this.persistTimer = undefined;
-      this.store
-        .save(this.data)
-        .catch((err) => this.logger.warn(`Could not save /data: ${err.message}`));
+      this.saveNow().catch((err) => this.logger.warn(`Could not save /data: ${err.message}`));
     }, this.timings.persistDelay);
+  }
+
+  /**
+   * Writes /data now, after any write already under way: the writes form one
+   * chain, so two never share the temporary file. Rejects when this one fails.
+   */
+  saveNow() {
+    if (this.persistTimer) {
+      this.timers.clearTimeout(this.persistTimer);
+      this.persistTimer = undefined;
+    }
+    const run = this.saveChain.then(() => this.store.save(this.data));
+    this.saveChain = run.catch(() => {});
+    return run;
   }
 
   /**
@@ -275,12 +297,8 @@ export class HdfuryApp {
       return;
     }
     this.attemptSavedAt = now;
-    if (this.persistTimer) {
-      this.timers.clearTimeout(this.persistTimer);
-      this.persistTimer = undefined;
-    }
     try {
-      await this.store.save(this.data);
+      await this.saveNow();
     } catch (err) {
       this.logger.warn(`Could not save /data: ${err.message}`);
     }
@@ -369,7 +387,29 @@ export class HdfuryApp {
       box = { serial, host: '', port: address.port, caps: [], rebootAt: 0 };
       table[serial] = box;
       this.persist();
+      // A device may already exist in Gladys (/data reset): created at once
+      // when the SDK's list has it, and the list asked again next round anyway.
+      const externalId = this.gladys.externalIds(DEVICE_TYPE, serial).device;
+      if (
+        (Array.isArray(this.gladys.devices) ? this.gladys.devices : []).some(
+          (d) => d?.external_id === externalId,
+        )
+      ) {
+        this.created.add(serial);
+      }
+      this.createdStale = true;
+    } else if (
+      box.host &&
+      (box.host !== address.host || box.port !== address.port) &&
+      this.config.addresses.some((a) => addressKey(a) === this.keyOf(box)) &&
+      this.readings.get(serial) !== null
+    ) {
+      // The same box behind two typed addresses (an IP and a name, two IPs):
+      // it stays where it is, and the status says so; never moved back and forth.
+      this.duplicates.set(addressKey(address), serial);
+      return undefined;
     }
+    this.duplicates.delete(addressKey(address));
     for (const other of this.boxes) {
       if (other.serial !== serial && other.host === address.host && other.port === address.port) {
         this.addressLost(other, address);
@@ -504,8 +544,10 @@ export class HdfuryApp {
 
   /** Board and info page of the box at `address`, before `until`. */
   async readPages(address, until, { epoch, box } = {}) {
+    // Each request gets `requestTimeout` at most: a silent box never holds its queue for long.
+    const timeout = () => Math.min(until - this.now(), this.timings.requestTimeout);
     const board = parseBoard(
-      await this.http.requestJson(address, PATHS.BOARD, { timeout: until - this.now() }),
+      await this.http.requestJson(address, PATHS.BOARD, { timeout: timeout() }),
     );
     this.checkFresh(epoch, box, address);
     if (box && board.serial && board.serial !== box.serial) {
@@ -515,7 +557,7 @@ export class HdfuryApp {
       throw new HdfuryError(ERROR_KINDS.TIMEOUT, 'no time left for the info page');
     }
     const info = parseInfo(
-      await this.http.requestJson(address, PATHS.INFO, { timeout: until - this.now() }),
+      await this.http.requestJson(address, PATHS.INFO, { timeout: timeout() }),
     );
     this.checkFresh(epoch, box, address);
     return { board, info };
@@ -632,18 +674,24 @@ export class HdfuryApp {
         return null;
       }
       if (!pages.board.serial) {
-        // Unreadable is no proof of another box: the address is kept.
+        // Unreadable is no proof of another box: the address is kept. But
+        // the identity is not confirmed: only "Online" is published, the
+        // features never grow from that page, and the status says so.
         this.warnOnce(
           `noserial:${box.serial}`,
-          `${deviceName(box)}: serial number not readable, its identity not checked then`,
+          `${deviceName(box)}: serial number not readable, identity not confirmed`,
         );
+        this.unconfirmed.add(box.serial);
+        reading = { texts: {}, codes: {} };
+      } else {
+        this.unconfirmed.delete(box.serial);
+        const renamed = this.noteBoard(box, pages.board);
+        const grew = this.mergeCaps(box, pages.info.keys);
+        if (renamed || grew) {
+          await this.publishDevices().catch(() => {});
+        }
+        reading = { texts: pages.info.texts, codes: pages.info.codes };
       }
-      const renamed = this.noteBoard(box, pages.board);
-      const grew = this.mergeCaps(box, pages.info.keys);
-      if (renamed || grew) {
-        await this.publishDevices().catch(() => {});
-      }
-      reading = { texts: pages.info.texts, codes: pages.info.codes };
     } catch (err) {
       if (err instanceof Stale) {
         return undefined;
@@ -866,10 +914,15 @@ export class HdfuryApp {
         throw new HdfuryError(err.kind, `Inputs not read before the command (${err.message})`);
       }
       this.checkCommandFresh(epoch, box, address);
+      const other = key === FEATURES.INPUT_TX0 ? FEATURES.INPUT_TX1 : FEATURES.INPUT_TX0;
+      // The other output is sent back as read, only when it is one of the table.
+      if (optionOf(other, info.codes[other]) === undefined) {
+        throw new Error(`The input of the other output is unknown, ${NOTHING_SENT}`);
+      }
       const tx0 = key === FEATURES.INPUT_TX0 ? code : info.codes[FEATURES.INPUT_TX0];
       const tx1 = key === FEATURES.INPUT_TX1 ? code : info.codes[FEATURES.INPUT_TX1];
-      if (tx0 === undefined || tx1 === undefined) {
-        throw new Error(`The input of the other output is unknown, ${NOTHING_SENT}`);
+      if (tx0 === COPY_CODE && tx1 === COPY_CODE) {
+        throw new Error(`Each output would copy the other one, ${NOTHING_SENT}`);
       }
       if (info.codes[key] === code) {
         return undefined;
@@ -890,17 +943,25 @@ export class HdfuryApp {
       }
     }
     this.checkCommandFresh(epoch, box, address);
+    if (deadline - this.now() < 300) {
+      throw new HdfuryError(ERROR_KINDS.BUDGET, `No time left for this command, ${NOTHING_SENT}`);
+    }
+    if (key === FEATURES.REBOOT) {
+      // The guard is set and WRITTEN to /data before the first byte.
+      await this.saveRebootGuard(box, deadline);
+      this.checkCommandFresh(epoch, box, address);
+    }
     const left = deadline - this.now();
     if (left < 300) {
+      if (key === FEATURES.REBOOT) {
+        box.rebootAt = 0;
+        this.persist();
+      }
       throw new HdfuryError(ERROR_KINDS.BUDGET, `No time left for this command, ${NOTHING_SENT}`);
     }
     context.mayHaveSent = true;
-    this.lastCommandAt.set(box.serial, this.now());
-    if (key === FEATURES.REBOOT) {
-      // The guard is set before the first byte, and kept in /data.
-      box.rebootAt = this.now();
-      this.persist();
-    }
+    const sentAt = this.now();
+    this.lastCommandAt.set(box.serial, sentAt);
     try {
       await this.http.request(address, path, { timeout: left - 100 });
     } catch (err) {
@@ -923,8 +984,66 @@ export class HdfuryApp {
         );
       }
     }
+    if (SELECT_FEATURES.has(key)) {
+      await this.confirm(box, address, epoch, key, code, sentAt, deadline);
+    }
     this.logger.info(`${deviceName(box)}: ${key} sent`);
     return undefined;
+  }
+
+  /**
+   * A dropdown command is a success only when the info page, read again in
+   * the same task (after the 2 s wait when it fits, else as late as the
+   * budget allows, starting at the deadline - 400 ms at the latest), gives
+   * the value asked. Otherwise: "sent, without confirmation" (the later
+   * read publishes what the box really has).
+   */
+  async confirm(box, address, epoch, key, code, sentAt, deadline) {
+    const unconfirmed = () =>
+      new HdfuryError(ERROR_KINDS.TIMEOUT, SENT_UNCONFIRMED, { sent: true });
+    const start = Math.min(sentAt + this.timings.debounce, deadline - 400);
+    await sleep(start - this.now());
+    const timeout = deadline - 100 - this.now();
+    if (timeout < 50) {
+      throw unconfirmed();
+    }
+    let info;
+    try {
+      info = parseInfo(await this.http.requestJson(address, PATHS.INFO, { timeout }));
+      this.checkFresh(epoch, box, address);
+    } catch {
+      throw unconfirmed();
+    }
+    if (info.codes[key] !== code) {
+      throw unconfirmed();
+    }
+  }
+
+  /** Sets the reboot guard and waits for /data to hold it (before the deadline): else nothing is sent. */
+  async saveRebootGuard(box, deadline) {
+    const previous = box.rebootAt;
+    box.rebootAt = this.now();
+    let timer;
+    const late = new Promise((resolve, reject) => {
+      timer = setTimeout(
+        () => reject(new Error('timeout')),
+        Math.max(0, deadline - 300 - this.now()),
+      );
+    });
+    try {
+      await Promise.race([this.saveNow(), late]);
+    } catch (err) {
+      box.rebootAt = previous;
+      this.persist();
+      throw new Error(
+        `The reboot guard could not be written to /data (${err.message}), ${NOTHING_SENT}`,
+        {
+          cause: err,
+        },
+      );
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   checkCommandFresh(epoch, box, address) {
@@ -1031,6 +1150,30 @@ export class HdfuryApp {
     }
     if (noSerial.length > 0) {
       notes.push(T.noSerialAt(noSerial));
+    }
+    const typedKeys = new Set(this.config.addresses.map(addressKey));
+    const duplicates = [...this.duplicates.entries()].filter(
+      ([key, serial]) =>
+        typedKeys.has(key) &&
+        Object.hasOwn(this.data.boxes, serial) &&
+        this.data.boxes[serial].host &&
+        this.keyOf(this.data.boxes[serial]) !== key,
+    );
+    if (duplicates.length > 0) {
+      notes.push(
+        T.sameBox(
+          duplicates.map(
+            ([key, serial]) =>
+              `${key} = ${this.keyOf(this.data.boxes[serial])} (${deviceName(this.data.boxes[serial])})`,
+          ),
+        ),
+      );
+    }
+    const unconfirmed = this.boxes
+      .filter((b) => this.created.has(b.serial) && b.host && this.unconfirmed.has(b.serial))
+      .map(deviceName);
+    if (unconfirmed.length > 0) {
+      notes.push(T.identityUnconfirmed(unconfirmed));
     }
     const lost = this.boxes.filter((b) => this.created.has(b.serial) && !b.host);
     if (lost.length > 0) {

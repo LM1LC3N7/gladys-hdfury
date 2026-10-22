@@ -38,9 +38,11 @@ Gladys ⇄ SDK ⇄ src/handlers.js ⇄ src/app.js (HdfuryApp)
   budget (Gladys acks in 5 s): the identity read again, the inputs read
   again for `insel`, the deadline checked just before the request. The
   reboot option is checked when asked and again just before sending; one
-  reboot per box every 2 minutes, its time set before the request and kept
-  in `/data`. A request that may have reached the box is reported "sent,
-  without confirmation".
+  reboot per box every 2 minutes, its time written to `/data` before the
+  request. An input or mode change succeeds only when the info page, read
+  again in the same command, holds the value asked; hotplug and reboot
+  succeed on the box's HTTP 200. A request that may have reached the box
+  without that is reported "sent, without confirmation".
 - **Features**: read-only `unknown/binary` online state, `text/select`
   operation mode and inputs, `button/push` hotplug and reboot, read-only
   `text/text` for the signals, audio, displays and audio formats. No switch,

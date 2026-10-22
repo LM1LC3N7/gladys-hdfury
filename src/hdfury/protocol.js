@@ -83,6 +83,9 @@ export function cleanText(raw, max = LIMITS.text) {
     .slice(0, max * 4)
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ')
+    // The zero-width and bidirectional marks: they could reverse how a text
+    // reads on the dashboard.
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]+/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max)

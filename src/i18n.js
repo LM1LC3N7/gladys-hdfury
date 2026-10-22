@@ -63,6 +63,16 @@ export const T = {
       `Address unknown (another box answers at the old one): ${list(names)}. Type the new address in the configuration.`,
       `Adresse inconnue (un autre boîtier répond à l'ancienne) : ${list(names)}. Saisissez la nouvelle adresse dans la configuration.`,
     ),
+  sameBox: (pairs) =>
+    both(
+      `The same box answers at two typed addresses, the first one is kept: ${list(pairs)}. Remove one of them from the configuration.`,
+      `Le même boîtier répond à deux adresses saisies, la première est gardée : ${list(pairs)}. Retirez-en une de la configuration.`,
+    ),
+  identityUnconfirmed: (names) =>
+    both(
+      `Serial number unreadable at the last read (identity not confirmed: only "Online" is published, commands refused): ${list(names)}.`,
+      `Numéro de série illisible à la dernière lecture (identité non confirmée : seul « En ligne » est publié, commandes refusées) : ${list(names)}.`,
+    ),
   invalidEntries: (entries) =>
     both(
       `Ignored in the configuration (invalid): ${list(entries)}.`,

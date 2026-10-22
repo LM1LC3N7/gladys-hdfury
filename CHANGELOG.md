@@ -29,10 +29,30 @@ the notes of the version's GitHub Release.
 - "Check the boxes" button; refresh interval option (30 s by default),
   never read faster, restarts included.
 
+### Fixed
+
+- An input or mode change is reported a success only when the box, read
+  again within the command, holds the value asked; otherwise "sent, without
+  confirmation".
+- A device already in Gladys is read again after the saved box list was
+  lost or reset.
+- The reboot guard is written to `/data` before the reboot is sent.
+- A silent box no longer holds its queue for 10 seconds (4 at most per
+  request).
+- Two outputs copying each other, or an unknown input sent back, are
+  refused ("nothing sent").
+- The same box typed under two addresses no longer moves between them every
+  minute; the status says so.
+- With an unreadable serial number, only "Online" is published and the
+  status says the identity is not confirmed.
+- Writes to `/data` no longer overlap.
+
 ### Security
 
 - Answers bounded (32 KB, a plain JSON object, listed keys only, texts
   cleaned and cut), commands built from fixed tables only; only serial
   numbers are keys in `/data`, and its tables have no prototype.
+- Zero-width and bidirectional marks are removed from the texts of the box;
+  an address read back from `/data` is checked like a typed one.
 
 [Unreleased]: https://github.com/LM1LC3N7/gladys-hdfury/commits/main

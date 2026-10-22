@@ -11,6 +11,7 @@
 
 import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { parseAddress } from './config.js';
 import { DEFAULT_PORT, LIMITS } from './constants.js';
 import { CAP_KEYS } from './model.js';
 
@@ -38,7 +39,9 @@ function sanitize(data, { now = Date.now() } = {}) {
       }
       base.boxes[serial] = {
         serial,
-        host: typeof box.host === 'string' ? box.host.slice(0, 253) : '',
+        // Checked as a typed address would be (else forgotten: found again by its address).
+        host:
+          typeof box.host === 'string' && parseAddress(box.host)?.host === box.host ? box.host : '',
         port:
           Number.isInteger(box.port) && box.port > 0 && box.port < 65536 ? box.port : DEFAULT_PORT,
         hostname: name(box.hostname, /^[\w .-]{1,40}$/),

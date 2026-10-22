@@ -131,6 +131,30 @@ test('store: only valid serials, no prototype, times never in the future', async
   assert.deepEqual(Object.keys((await store.load()).boxes), []);
 });
 
+test('M8: a host read back from /data is checked as a typed address', () => {
+  const read = (host) =>
+    sanitizeData({ boxes: { abcd1234: { serial: 'abcd1234', host } } }).boxes.abcd1234.host;
+  assert.equal(read('192.168.1.60'), '192.168.1.60');
+  assert.equal(read('vrroom.local'), 'vrroom.local');
+  for (const bad of [
+    'evil host',
+    '../x',
+    'a/b',
+    '192.168.1.60:81',
+    'VRROOM.local',
+    'x'.repeat(300),
+  ]) {
+    assert.equal(read(bad), '', bad);
+  }
+});
+
+test('M7: zero-width and bidirectional marks are removed from texts', () => {
+  const text = ['4K', 0x200b, 'HDR', 0x202e, '10', 0x2066, '+', 0xfeff]
+    .map((p) => (typeof p === 'number' ? String.fromCharCode(p) : p))
+    .join('');
+  assert.equal(cleanText(text), '4KHDR10+');
+});
+
 async function server(t, handler) {
   const s = http.createServer(handler);
   await new Promise((resolve) => s.listen(0, '127.0.0.1', resolve));
