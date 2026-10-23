@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-23
+
 ### Changed
 
 - The code comment on the reboot refusals is back on the function it
@@ -62,5 +64,6 @@ the notes of the version's GitHub Release.
 - Zero-width and bidirectional marks are removed from the texts of the box;
   an address read back from `/data` is checked like a typed one.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-hdfury/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/LM1LC3N7/gladys-hdfury/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/LM1LC3N7/gladys-hdfury/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/LM1LC3N7/gladys-hdfury/releases/tag/v0.1.1

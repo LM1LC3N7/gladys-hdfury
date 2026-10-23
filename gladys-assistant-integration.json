@@ -6,8 +6,8 @@
     "en": "HDFury HDMI boxes on the local network: signal, audio, inputs, mode, hotplug, reboot.",
     "fr": "Boîtiers HDMI HDFury en local : signal, audio, entrées, mode, hotplug, redémarrage."
   },
-  "version": "0.1.1",
-  "docker_image": "ghcr.io/lm1lc3n7/gladys-hdfury:0.1.1",
+  "version": "0.1.2",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-hdfury:0.1.2",
   "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-hdfury/main/cover.png",
   "categories": ["multimedia"],
