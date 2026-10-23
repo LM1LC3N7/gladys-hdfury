@@ -768,11 +768,12 @@ export class HdfuryApp {
 
   // --- Commands --------------------------------------------------------------------
 
-  /** Refusals of a reboot, checked when asked and again just before sending. */
+  /** The refusal of a reboot while the "Allow rebooting the boxes" option is off. */
   rebootDisabledMessage() {
     return `Reboot is disabled in the configuration (option "Allow rebooting the boxes"), ${NOTHING_SENT}`;
   }
 
+  /** Refusals of a reboot, checked when asked and again just before sending. */
   rebootRefusal(box) {
     if (!this.config.allowReboot) {
       return this.rebootDisabledMessage();

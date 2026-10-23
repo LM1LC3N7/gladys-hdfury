@@ -10,6 +10,11 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Changed
+
+- The code comment on the reboot refusals is back on the function it
+  describes (no change in behaviour).
+
 ## [0.1.1] - 2026-10-22
 
 ### Added
